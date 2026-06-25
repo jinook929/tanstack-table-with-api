@@ -47,6 +47,13 @@ const columns = [
   }),
   columnHelper.accessor('status', {
     header: 'Status',
+    // Status has only two values, so its filter is a dropdown (see the header).
+    // `meta` is free-form per-column data; we use it to tell the header which
+    // filter UI to render and which options to offer.
+    meta: { filterVariant: 'select', filterOptions: ['active', 'inactive'] },
+    // EXACT match, not substring: "active" is a substring of "inactive", so a
+    // substring filter would match both. equalsString compares the whole value.
+    filterFn: 'equalsString',
     // Render the status as a colored "pill" instead of plain text.
     cell: (info) => {
       const status = info.getValue()
@@ -189,20 +196,41 @@ export default function UsersTable() {
                       {sortDir === 'desc' && <span aria-hidden>▼</span>}
                     </button>
 
-                    {/* Per-column filter input. Its value IS this column's filter value;
-                        setFilterValue updates only this column. getCanFilter() is true
-                        for all columns by default, but we guard anyway for clarity. */}
-                    {header.column.getCanFilter() && (
-                      <input
-                        type="text"
-                        value={header.column.getFilterValue() ?? ''}
-                        onChange={(e) =>
-                          header.column.setFilterValue(e.target.value)
-                        }
-                        placeholder="Filter…"
-                        className="mt-2 block w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
-                      />
-                    )}
+                    {/* Per-column filter. Its value IS this column's filter value;
+                        setFilterValue updates only this column. We pick the UI from
+                        the column's meta.filterVariant: a <select> for fixed-option
+                        columns (Status), a text <input> for everything else. */}
+                    {header.column.getCanFilter() &&
+                      (header.column.columnDef.meta?.filterVariant === 'select' ? (
+                        <select
+                          value={header.column.getFilterValue() ?? ''}
+                          onChange={(e) =>
+                            // Empty string clears the filter (TanStack auto-removes it).
+                            header.column.setFilterValue(e.target.value)
+                          }
+                          className="mt-2 block w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
+                        >
+                          {/* Empty value = "no filter" = show all rows. */}
+                          <option value="">All</option>
+                          {header.column.columnDef.meta.filterOptions.map(
+                            (opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={header.column.getFilterValue() ?? ''}
+                          onChange={(e) =>
+                            header.column.setFilterValue(e.target.value)
+                          }
+                          placeholder="Filter…"
+                          className="mt-2 block w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
+                        />
+                      ))}
                   </th>
                 )
               })}

@@ -97,14 +97,14 @@ const columns = [
   columnHelper.display({
     id: 'select',
     enableHiding: false, // always keep the selection column visible (hide it from the Columns menu)
-    // Header checkbox toggles ALL rows (across every page). It shows the dash
-    // when only some rows are selected.
+    // Header checkbox toggles all rows ON THE CURRENT PAGE only (the *Page*
+    // variants). It shows the dash when only some of this page's rows are selected.
     header: ({ table }) => (
       <IndeterminateCheckbox
-        checked={table.getIsAllRowsSelected()}
-        indeterminate={table.getIsSomeRowsSelected()}
-        onChange={table.getToggleAllRowsSelectedHandler()}
-        aria-label="Select all rows"
+        checked={table.getIsAllPageRowsSelected()}
+        indeterminate={table.getIsSomePageRowsSelected()}
+        onChange={table.getToggleAllPageRowsSelectedHandler()}
+        aria-label="Select all rows on this page"
       />
     ),
     // Per-row checkbox toggles just that row.
@@ -421,7 +421,7 @@ export default function UsersTable() {
                               type="button"
                               onClick={header.column.getToggleSortingHandler()}
                               className={
-                                'flex w-full cursor-pointer select-none items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted hover:text-ink ' +
+                                'group flex w-full cursor-pointer select-none items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted hover:text-ink ' +
                                 (isNum ? 'justify-end' : 'justify-start')
                               }
                             >
@@ -429,12 +429,23 @@ export default function UsersTable() {
                                 header.column.columnDef.header,
                                 header.getContext()
                               )}
-                              {/* Tight amber caret reflects the current sort direction. */}
-                              {sortDir && (
-                                <span className="text-[8px] text-signal">
-                                  {sortDir === 'asc' ? '▲' : '▼'}
-                                </span>
-                              )}
+                              {/* Sort indicator: ▲ asc, ▼ desc, or – when the column
+                                  is sortable but not currently sorted. The minus is
+                                  faint until you hover the header (group-hover). */}
+                              <span
+                                className={
+                                  'text-[8px] ' +
+                                  (sortDir
+                                    ? 'text-signal'
+                                    : 'text-muted/40 group-hover:text-muted')
+                                }
+                              >
+                                {sortDir === 'asc'
+                                  ? '▲'
+                                  : sortDir === 'desc'
+                                    ? '▼'
+                                    : '–'}
+                              </span>
                             </button>
                           ) : (
                             flexRender(

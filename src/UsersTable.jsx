@@ -226,9 +226,10 @@ export default function UsersTable() {
           </select>
         </label>
 
-        {/* First | "Page X of Y" | Last — the First/Last jump buttons flank the
-            page indicator. Both disable at the boundaries. */}
-        <div className="flex items-center gap-3">
+        {/* One pagination cluster: First ‹ Page X of Y › Last.
+            Order is First → Previous(arrow) → indicator → Next(arrow) → Last,
+            so the single-step arrows sit just inside the jump-to-end buttons. */}
+        <div className="flex items-center gap-2">
           {/* setPageIndex(0) jumps straight to the first page. */}
           <button
             onClick={() => table.setPageIndex(0)}
@@ -238,11 +239,55 @@ export default function UsersTable() {
             First
           </button>
 
+          {/* Previous: one page back. Icon-only, so aria-label keeps it accessible. */}
+          <button
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            aria-label="Previous page"
+            className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {/* Small left-chevron arrow (inline SVG, inherits text color). */}
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+
           {/* "Page X of Y" — getPageCount() is the total number of pages. */}
           <span className="text-gray-600">
-            Page {table.getState().pagination.pageIndex + 1} of{' '}
+            {table.getState().pagination.pageIndex + 1} / {' '}
             {table.getPageCount()}
           </span>
+
+          {/* Next: one page forward. */}
+          <button
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            aria-label="Next page"
+            className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {/* Small right-chevron arrow (mirror of the left one). */}
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
 
           {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
           <button
@@ -251,25 +296,6 @@ export default function UsersTable() {
             className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Last
-          </button>
-        </div>
-
-        {/* Previous / Next step one page at a time; they disable at the boundaries
-            via getCanPreviousPage() / getCanNextPage(). */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Previous
-          </button>
-          <button
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Next
           </button>
         </div>
       </div>

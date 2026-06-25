@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type InputHTMLAttributes,
+} from 'react'
 import {
   useReactTable,
   getCoreRowModel, // builds the basic rows from your data
@@ -9,6 +15,7 @@ import {
   createColumnHelper, // small helper that gives column definitions type-safety + autocomplete
   type SortingState, // type of the sorting state we hold in React
   type ColumnFiltersState, // type of the per-column filter state we hold in React
+  type RowSelectionState, // type of the row-selection state (a map of selected row ids)
   type RowData, // generic constraint used by the meta augmentation below
 } from '@tanstack/react-table'
 
@@ -50,12 +57,64 @@ const API_URL =
 // checked against User and each cell's `getValue()` is correctly typed.
 const columnHelper = createColumnHelper<User>()
 
+// A checkbox that can also show the "indeterminate" dash (used by the header
+// checkbox when only SOME rows are selected). HTML exposes `indeterminate` only
+// as a JS property, not an attribute, so we set it on the DOM node via a ref
+// after each render.
+function IndeterminateCheckbox({
+  indeterminate,
+  className = '',
+  ...rest
+}: { indeterminate?: boolean } & InputHTMLAttributes<HTMLInputElement>) {
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (ref.current && typeof indeterminate === 'boolean') {
+      // Show the dash only when it's indeterminate AND not fully checked.
+      ref.current.indeterminate = !rest.checked && indeterminate
+    }
+  }, [indeterminate, rest.checked])
+
+  return (
+    <input
+      type="checkbox"
+      ref={ref}
+      className={'h-4 w-4 cursor-pointer accent-signal ' + className}
+      {...rest}
+    />
+  )
+}
+
 // --- Column definitions -----------------------------------------------------
 // Each `columnHelper.accessor(field, { ... })` describes one column:
 //   - the first arg is which property of the row to read
 //   - `header` is what shows in the <th>
 //   - `cell` (optional) customizes how the value is rendered in each <td>
 const columns = [
+  // Selection column — a `display` column has no accessor, so it isn't sortable
+  // or filterable; it just renders checkboxes.
+  columnHelper.display({
+    id: 'select',
+    // Header checkbox toggles ALL rows (across every page). It shows the dash
+    // when only some rows are selected.
+    header: ({ table }) => (
+      <IndeterminateCheckbox
+        checked={table.getIsAllRowsSelected()}
+        indeterminate={table.getIsSomeRowsSelected()}
+        onChange={table.getToggleAllRowsSelectedHandler()}
+        aria-label="Select all rows"
+      />
+    ),
+    // Per-row checkbox toggles just that row.
+    cell: ({ row }) => (
+      <IndeterminateCheckbox
+        checked={row.getIsSelected()}
+        disabled={!row.getCanSelect()}
+        onChange={row.getToggleSelectedHandler()}
+        aria-label={`Select ${row.original.name}`}
+      />
+    ),
+  }),
   columnHelper.accessor('id', {
     header: 'ID',
     // Numeric columns default to the `inNumberRange` filter (expects a [min, max]
@@ -127,6 +186,10 @@ export default function UsersTable() {
   // Column filters and the global filter are combined with AND — a row must pass both.
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
+  // `rowSelection` maps selected row ids to true, e.g. { '3': true, '7': true }.
+  // It persists across pages and filters (selection is tracked by row id).
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+
   // Fetch the real users once when the component first mounts.
   useEffect(() => {
     // An AbortController lets us cancel the request if the component unmounts mid-flight.
@@ -174,10 +237,12 @@ export default function UsersTable() {
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { sorting, globalFilter, columnFilters }, // sort + global search + per-column filters
+    state: { sorting, globalFilter, columnFilters, rowSelection }, // sort + search + filters + selection
     onSortingChange: setSorting, // let the table update sort state when a header is clicked
     onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
     onColumnFiltersChange: setColumnFilters, // let the table update per-column filter state
+    onRowSelectionChange: setRowSelection, // let the table update which rows are selected
+    enableRowSelection: true, // turn on checkbox row selection
     // The table manages pagination state internally; we just seed the starting page size.
     initialState: { pagination: { pageSize: 10 } },
     getCoreRowModel: getCoreRowModel(),
@@ -188,6 +253,8 @@ export default function UsersTable() {
 
   // Live roster tally for the masthead (the "hero" of this design).
   const activeCount = data.filter((u) => u.status === 'active').length
+  // How many rows are checked right now (across all pages).
+  const selectedCount = Object.keys(rowSelection).length
   // Pagination readout for the transport bar (zero-padded like a counter).
   const pageIndex = table.getState().pagination.pageIndex
   const pageCount = table.getPageCount()
@@ -235,6 +302,14 @@ export default function UsersTable() {
         </div>
       </div>
 
+      {/* Selection readout — how many rows are checked right now. */}
+      {!loading && !error && (
+        <p className="mb-3 font-mono text-xs uppercase tracking-[0.14em] text-muted">
+          <span className="text-signal">{selectedCount}</span>{' '}
+          {selectedCount === 1 ? 'row' : 'rows'} selected
+        </p>
+      )}
+
       {/* --- Table area: loading / error / the ledger --- */}
       {loading ? (
         <p className="py-12 text-center font-mono text-sm text-muted">
@@ -260,27 +335,36 @@ export default function UsersTable() {
                         header.column.id === 'id' || header.column.id === 'age'
                       return (
                         <th key={header.id} className="px-4 py-3 align-top">
-                          {/* Sort toggle. The click handler lives on THIS button (not the
-                              whole <th>), so typing in the filter below never sorts. */}
-                          <button
-                            type="button"
-                            onClick={header.column.getToggleSortingHandler()}
-                            className={
-                              'flex w-full select-none items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted hover:text-ink ' +
-                              (isNum ? 'justify-end' : 'justify-start')
-                            }
-                          >
-                            {flexRender(
+                          {/* Sortable columns get a sort-toggle button; the select
+                              column (not sortable) renders its checkbox directly.
+                              The click handler lives on THIS button (not the whole
+                              <th>), so typing in the filter below never sorts. */}
+                          {header.column.getCanSort() ? (
+                            <button
+                              type="button"
+                              onClick={header.column.getToggleSortingHandler()}
+                              className={
+                                'flex w-full cursor-pointer select-none items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted hover:text-ink ' +
+                                (isNum ? 'justify-end' : 'justify-start')
+                              }
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                              {/* Tight amber caret reflects the current sort direction. */}
+                              {sortDir && (
+                                <span className="text-[8px] text-signal">
+                                  {sortDir === 'asc' ? '▲' : '▼'}
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            flexRender(
                               header.column.columnDef.header,
                               header.getContext()
-                            )}
-                            {/* Tight amber caret reflects the current sort direction. */}
-                            {sortDir && (
-                              <span className="text-[8px] text-signal">
-                                {sortDir === 'asc' ? '▲' : '▼'}
-                              </span>
-                            )}
-                          </button>
+                            )
+                          )}
 
                           {/* Per-column filter. We pick the UI from meta.filterVariant:
                               a <select> for fixed-option columns (Status), a text
@@ -336,7 +420,13 @@ export default function UsersTable() {
 
               <tbody className="divide-y divide-line">
                 {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-white/70">
+                  <tr
+                    key={row.id}
+                    className={
+                      'hover:bg-white/70 ' +
+                      (row.getIsSelected() ? 'bg-signal/5' : '')
+                    }
+                  >
                     {row.getVisibleCells().map((cell) => {
                       const colId = cell.column.id
                       const isNum = colId === 'id' || colId === 'age'

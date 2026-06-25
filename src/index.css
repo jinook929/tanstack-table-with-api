@@ -1,6 +1,25 @@
 /* Tailwind v4: a single import pulls in base, components, and utilities. */
 @import "tailwindcss";
 
+/* --- "Dispatch" design tokens ---------------------------------------------
+   @theme registers these as first-class Tailwind utilities, so the components
+   can use bg-paper, text-ink, border-line, text-signal, font-display, etc. */
+@theme {
+  --color-paper: #eceef0; /* cool page background (not warm cream) */
+  --color-ink: #15181c; /* primary text, cool near-black */
+  --color-muted: #717b83; /* labels, email, secondary text */
+  --color-line: #d7dcdf; /* hairline rules — the ledger lines */
+  --color-signal: #e0922a; /* the one accent: "lit" amber */
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
 body {
   margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }

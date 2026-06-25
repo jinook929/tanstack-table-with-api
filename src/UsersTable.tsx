@@ -84,20 +84,24 @@ const columns = [
     // EXACT match, not substring: "active" is a substring of "inactive", so a
     // substring filter would match both. equalsString compares the whole value.
     filterFn: 'equalsString',
-    // Render the status as a colored "pill" instead of plain text.
+    // The signature element: render status as a presence "signal" — a lit amber
+    // dot for active, a hollow ring for inactive (never color-only: label too).
     cell: (info) => {
-      const status = info.getValue() // typed as 'active' | 'inactive'
-      const isActive = status === 'active'
+      const isActive = info.getValue() === 'active'
       return (
-        <span
-          className={
-            'inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ' +
-            (isActive
-              ? 'bg-green-100 text-green-700'
-              : 'bg-gray-100 text-gray-600')
-          }
-        >
-          {status}
+        <span className="inline-flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={
+              'h-2 w-2 shrink-0 rounded-full ' +
+              (isActive
+                ? 'bg-signal shadow-[0_0_0_3px_rgba(224,146,42,0.18)]'
+                : 'border border-muted/60')
+            }
+          />
+          <span className={isActive ? 'text-ink' : 'text-muted'}>
+            {isActive ? 'Active' : 'Inactive'}
+          </span>
         </span>
       )
     },
@@ -182,216 +186,287 @@ export default function UsersTable() {
     getPaginationRowModel: getPaginationRowModel(), // enables pagination (page size set above / via the selector)
   })
 
-  // --- Render states ---------------------------------------------------------
-  if (loading) return <p className="p-6 text-gray-500">Loading users…</p>
-  if (error) return <p className="p-6 text-red-600">Error: {error}</p>
+  // Live roster tally for the masthead (the "hero" of this design).
+  const activeCount = data.filter((u) => u.status === 'active').length
+  // Pagination readout for the transport bar (zero-padded like a counter).
+  const pageIndex = table.getState().pagination.pageIndex
+  const pageCount = table.getPageCount()
 
   return (
     <div>
-      {/* Global search box: its value is the `globalFilter` state. On every keystroke
-          we push the text into the table, which re-filters all columns instantly. */}
-      <input
-        type="text"
-        value={globalFilter}
-        onChange={(e) => setGlobalFilter(e.target.value)}
-        placeholder="Search all columns…"
-        className="mb-3 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      />
-
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-        <thead className="bg-gray-50">
-          {/* A table can have multiple header rows; here there's just one. */}
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                // Is this column currently sorted? Returns 'asc' | 'desc' | false.
-                const sortDir = header.column.getIsSorted()
-                return (
-                  <th
-                    key={header.id}
-                    className="px-4 py-3 align-top font-semibold text-gray-700"
-                  >
-                    {/* Sort toggle. The click handler lives on THIS button (not the
-                        whole <th>), so typing in the filter input below never sorts. */}
-                    <button
-                      type="button"
-                      onClick={header.column.getToggleSortingHandler()}
-                      className="inline-flex cursor-pointer select-none items-center gap-1 hover:text-gray-900"
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                      {/* Little arrow that reflects the current sort direction. */}
-                      {sortDir === 'asc' && <span aria-hidden>▲</span>}
-                      {sortDir === 'desc' && <span aria-hidden>▼</span>}
-                    </button>
-
-                    {/* Per-column filter. Its value IS this column's filter value;
-                        setFilterValue updates only this column. We pick the UI from
-                        the column's meta.filterVariant: a <select> for fixed-option
-                        columns (Status), a text <input> for everything else. */}
-                    {header.column.getCanFilter() &&
-                      (header.column.columnDef.meta?.filterVariant === 'select' ? (
-                        <select
-                          value={(header.column.getFilterValue() as string) ?? ''}
-                          onChange={(e) =>
-                            // Empty string clears the filter (TanStack auto-removes it).
-                            header.column.setFilterValue(e.target.value)
-                          }
-                          className="mt-2 block w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
-                        >
-                          {/* Empty value = "no filter" = show all rows. */}
-                          <option value="">All</option>
-                          {(header.column.columnDef.meta?.filterOptions ?? []).map(
-                            (opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            )
-                          )}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={(header.column.getFilterValue() as string) ?? ''}
-                          onChange={(e) =>
-                            header.column.setFilterValue(e.target.value)
-                          }
-                          placeholder="Filter…"
-                          className="mt-2 block w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
-                        />
-                      ))}
-                  </th>
-                )
-              })}
-            </tr>
-          ))}
-        </thead>
-
-        <tbody className="divide-y divide-gray-100 bg-white">
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="hover:bg-gray-50">
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="px-4 py-3 text-gray-700">
-                  {/* flexRender handles both plain values and custom cell renderers. */}
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-
-          {/* When the filters (global search OR any column filter) hide every row,
-              show a friendly message instead of an empty table. `colSpan` spans
-              the cell across all columns. */}
-          {table.getRowModel().rows.length === 0 && (
-            <tr>
-              <td
-                colSpan={columns.length}
-                className="px-4 py-6 text-center text-gray-400"
-              >
-                No users match your filters.
-              </td>
-            </tr>
+      {/* --- Masthead: eyebrow, title, live tally, and the command search --- */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <header>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">
+            Directory
+          </p>
+          <h1 className="font-display text-4xl font-bold tracking-tight text-ink">
+            Users
+          </h1>
+          {/* The hero readout: how many of the roster are active right now. */}
+          {!loading && !error && (
+            <p className="mt-1 font-mono text-[13px] text-muted">
+              <span className="text-signal">{activeCount}</span> / {data.length}{' '}
+              active
+            </p>
           )}
-        </tbody>
-        </table>
-      </div>
+        </header>
 
-      {/* --- Pagination controls -------------------------------------------
-          `table.getState().pagination` holds { pageIndex, pageSize }.
-          pageIndex is 0-based, so we add 1 when showing it to humans. */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-        {/* Page size selector: changing it calls setPageSize, which re-slices the rows. */}
-        <label className="flex items-center gap-2 text-gray-600">
-          Rows per page:
-          <select
-            value={table.getState().pagination.pageSize}
-            onChange={(e) => table.setPageSize(Number(e.target.value))}
-            className="rounded-md border border-gray-300 px-2 py-1"
+        {/* Global search — the "command" input. Amber underline focus, mono text. */}
+        <div className="relative w-full sm:w-72">
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
           >
-            {[5, 10, 20].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* One pagination cluster: First ‹ Page X of Y › Last.
-            Order is First → Previous(arrow) → indicator → Next(arrow) → Last,
-            so the single-step arrows sit just inside the jump-to-end buttons. */}
-        <div className="flex items-center gap-2">
-          {/* setPageIndex(0) jumps straight to the first page. */}
-          <button
-            onClick={() => table.setPageIndex(0)}
-            disabled={!table.getCanPreviousPage()}
-            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            First
-          </button>
-
-          {/* Previous: one page back. Icon-only, so aria-label keeps it accessible. */}
-          <button
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            aria-label="Previous page"
-            className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {/* Small left-chevron arrow (inline SVG, inherits text color). */}
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
-
-          {/* "Page X of Y" — getPageCount() is the total number of pages. */}
-          <span className="text-gray-600">
-            {table.getState().pagination.pageIndex + 1} / {' '}
-            {table.getPageCount()}
-          </span>
-
-          {/* Next: one page forward. */}
-          <button
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            aria-label="Next page"
-            className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {/* Small right-chevron arrow (mirror of the left one). */}
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
-
-          {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
-          <button
-            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-            disabled={!table.getCanNextPage()}
-            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Last
-          </button>
+            <circle cx="9" cy="9" r="6" />
+            <path d="m14 14 4 4" strokeLinecap="round" />
+          </svg>
+          <input
+            type="text"
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Search the roster…"
+            className="block w-full rounded-[4px] border border-line bg-white py-2.5 pl-9 pr-3 font-mono text-sm text-ink placeholder:text-muted/70 focus:border-signal focus:outline-none focus:ring-1 focus:ring-signal/30"
+          />
         </div>
       </div>
+
+      {/* --- Table area: loading / error / the ledger --- */}
+      {loading ? (
+        <p className="py-12 text-center font-mono text-sm text-muted">
+          Loading roster…
+        </p>
+      ) : error ? (
+        <p className="py-12 text-center font-mono text-sm text-red-700">
+          Error: {error}
+        </p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                {/* A table can have multiple header rows; here there's just one. */}
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id} className="border-b border-ink/15">
+                    {headerGroup.headers.map((header) => {
+                      // Is this column currently sorted? Returns 'asc' | 'desc' | false.
+                      const sortDir = header.column.getIsSorted()
+                      // Numeric columns are right-aligned (tabular figures).
+                      const isNum =
+                        header.column.id === 'id' || header.column.id === 'age'
+                      return (
+                        <th key={header.id} className="px-4 py-3 align-top">
+                          {/* Sort toggle. The click handler lives on THIS button (not the
+                              whole <th>), so typing in the filter below never sorts. */}
+                          <button
+                            type="button"
+                            onClick={header.column.getToggleSortingHandler()}
+                            className={
+                              'flex w-full select-none items-center gap-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted hover:text-ink ' +
+                              (isNum ? 'justify-end' : 'justify-start')
+                            }
+                          >
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                            {/* Tight amber caret reflects the current sort direction. */}
+                            {sortDir && (
+                              <span className="text-[8px] text-signal">
+                                {sortDir === 'asc' ? '▲' : '▼'}
+                              </span>
+                            )}
+                          </button>
+
+                          {/* Per-column filter. We pick the UI from meta.filterVariant:
+                              a <select> for fixed-option columns (Status), a text
+                              <input> for everything else. */}
+                          {header.column.getCanFilter() &&
+                            (header.column.columnDef.meta?.filterVariant ===
+                            'select' ? (
+                              <select
+                                value={
+                                  (header.column.getFilterValue() as string) ??
+                                  ''
+                                }
+                                onChange={(e) =>
+                                  // Empty string clears the filter (TanStack auto-removes it).
+                                  header.column.setFilterValue(e.target.value)
+                                }
+                                className="mt-2 block w-full rounded-[3px] border border-line bg-white px-2 py-1 font-mono text-xs text-ink focus:border-signal focus:outline-none focus:ring-1 focus:ring-signal/30"
+                              >
+                                {/* Empty value = "no filter" = show all rows. */}
+                                <option value="">All</option>
+                                {(
+                                  header.column.columnDef.meta?.filterOptions ??
+                                  []
+                                ).map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={
+                                  (header.column.getFilterValue() as string) ??
+                                  ''
+                                }
+                                onChange={(e) =>
+                                  header.column.setFilterValue(e.target.value)
+                                }
+                                placeholder="Filter…"
+                                className={
+                                  'mt-2 block w-full rounded-[3px] border border-line bg-white px-2 py-1 font-mono text-xs text-ink placeholder:text-muted/60 focus:border-signal focus:outline-none focus:ring-1 focus:ring-signal/30 ' +
+                                  (isNum ? 'text-right' : '')
+                                }
+                              />
+                            ))}
+                        </th>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </thead>
+
+              <tbody className="divide-y divide-line">
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-white/70">
+                    {row.getVisibleCells().map((cell) => {
+                      const colId = cell.column.id
+                      const isNum = colId === 'id' || colId === 'age'
+                      // Per-column typographic treatment: mono data, sans names.
+                      const cls =
+                        colId === 'name'
+                          ? 'font-medium text-ink'
+                          : colId === 'email'
+                            ? 'font-mono text-[13px] text-muted'
+                            : isNum
+                              ? 'font-mono tabular-nums text-right text-ink'
+                              : 'text-ink'
+                      return (
+                        <td key={cell.id} className={'px-4 py-3.5 ' + cls}>
+                          {/* flexRender handles both plain values and custom cell renderers. */}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+
+                {/* When the filters hide every row, show a friendly message instead
+                    of an empty ledger. `colSpan` spans the cell across all columns. */}
+                {table.getRowModel().rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={columns.length}
+                      className="px-4 py-8 text-center font-mono text-sm text-muted"
+                    >
+                      No users match your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* --- Transport bar: rows-per-page + a zero-padded page counter --- */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {/* Page size selector: changing it calls setPageSize, which re-slices the rows. */}
+            <label className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.12em] text-muted">
+              Rows
+              <select
+                value={table.getState().pagination.pageSize}
+                onChange={(e) => table.setPageSize(Number(e.target.value))}
+                className="cursor-pointer rounded-[3px] border border-line bg-white px-2 py-1 text-ink focus:border-signal focus:outline-none focus:ring-1 focus:ring-signal/30"
+              >
+                {[5, 10, 20].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* First ‹ PAGE 01 / 05 › Last — the transport cluster. */}
+            <div className="flex items-center gap-3">
+              {/* setPageIndex(0) jumps straight to the first page. */}
+              <button
+                onClick={() => table.setPageIndex(0)}
+                disabled={!table.getCanPreviousPage()}
+                className="cursor-pointer font-mono text-xs uppercase tracking-[0.14em] text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-muted"
+              >
+                First
+              </button>
+
+              {/* Previous: one page back. Icon-only, so aria-label keeps it accessible. */}
+              <button
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                aria-label="Previous page"
+                className="cursor-pointer p-1 text-muted hover:text-signal disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-muted"
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              {/* Zero-padded page counter — a deliberate "board" device. */}
+              <span className="font-mono text-xs tracking-[0.16em] text-ink">
+                PAGE {String(pageIndex + 1).padStart(2, '0')} /{' '}
+                {String(pageCount).padStart(2, '0')}
+              </span>
+
+              {/* Next: one page forward. */}
+              <button
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                aria-label="Next page"
+                className="cursor-pointer p-1 text-muted hover:text-signal disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-muted"
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
+              <button
+                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                disabled={!table.getCanNextPage()}
+                className="cursor-pointer font-mono text-xs uppercase tracking-[0.14em] text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-muted"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

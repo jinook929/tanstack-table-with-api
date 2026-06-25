@@ -1,0 +1,6 @@
+/* Tailwind v4: a single import pulls in base, components, and utilities. */
+@import "tailwindcss";
+
+body {
+  margin: 0;
+}

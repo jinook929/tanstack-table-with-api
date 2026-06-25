@@ -232,9 +232,17 @@ export default function UsersTable() {
           {table.getPageCount()}
         </span>
 
-        {/* Previous / Next step one page at a time; they disable at the boundaries
-            via getCanPreviousPage() / getCanNextPage(). */}
+        {/* First / Previous / Next / Last. All four disable themselves at the
+            boundaries via getCanPreviousPage() / getCanNextPage(). */}
         <div className="flex gap-2">
+          {/* setPageIndex(0) jumps straight to the first page. */}
+          <button
+            onClick={() => table.setPageIndex(0)}
+            disabled={!table.getCanPreviousPage()}
+            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            First
+          </button>
           <button
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
@@ -248,6 +256,14 @@ export default function UsersTable() {
             className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next
+          </button>
+          {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
+          <button
+            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+            disabled={!table.getCanNextPage()}
+            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Last
           </button>
         </div>
       </div>

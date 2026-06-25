@@ -74,6 +74,11 @@ export default function UsersTable() {
   // against EVERY column at once (case-insensitive "contains") to decide which rows show.
   const [globalFilter, setGlobalFilter] = useState('')
 
+  // `columnFilters` is the PER-COLUMN search state: an array like
+  // [{ id: 'name', value: 'em' }]. Each entry filters only its own column.
+  // Column filters and the global filter are combined with AND — a row must pass both.
+  const [columnFilters, setColumnFilters] = useState([])
+
   // Fetch the real users once when the component first mounts.
   useEffect(() => {
     // An AbortController lets us cancel the request if the component unmounts mid-flight.
@@ -119,9 +124,10 @@ export default function UsersTable() {
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { sorting, globalFilter }, // tell the table our current sort + search state
+    state: { sorting, globalFilter, columnFilters }, // sort + global search + per-column filters
     onSortingChange: setSorting, // let the table update sort state when a header is clicked
     onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
+    onColumnFiltersChange: setColumnFilters, // let the table update per-column filter state
     // The table manages pagination state internally; we just seed the starting page size.
     initialState: { pagination: { pageSize: 10 } },
     getCoreRowModel: getCoreRowModel(),
@@ -158,11 +164,15 @@ export default function UsersTable() {
                 return (
                   <th
                     key={header.id}
-                    // Clicking the header toggles its sort (none → asc → desc → none).
-                    onClick={header.column.getToggleSortingHandler()}
-                    className="cursor-pointer select-none px-4 py-3 font-semibold text-gray-700 hover:bg-gray-100"
+                    className="px-4 py-3 align-top font-semibold text-gray-700"
                   >
-                    <span className="inline-flex items-center gap-1">
+                    {/* Sort toggle. The click handler lives on THIS button (not the
+                        whole <th>), so typing in the filter input below never sorts. */}
+                    <button
+                      type="button"
+                      onClick={header.column.getToggleSortingHandler()}
+                      className="inline-flex cursor-pointer select-none items-center gap-1 hover:text-gray-900"
+                    >
                       {flexRender(
                         header.column.columnDef.header,
                         header.getContext()
@@ -170,7 +180,22 @@ export default function UsersTable() {
                       {/* Little arrow that reflects the current sort direction. */}
                       {sortDir === 'asc' && <span aria-hidden>▲</span>}
                       {sortDir === 'desc' && <span aria-hidden>▼</span>}
-                    </span>
+                    </button>
+
+                    {/* Per-column filter input. Its value IS this column's filter value;
+                        setFilterValue updates only this column. getCanFilter() is true
+                        for all columns by default, but we guard anyway for clarity. */}
+                    {header.column.getCanFilter() && (
+                      <input
+                        type="text"
+                        value={header.column.getFilterValue() ?? ''}
+                        onChange={(e) =>
+                          header.column.setFilterValue(e.target.value)
+                        }
+                        placeholder="Filter…"
+                        className="mt-2 block w-full rounded border border-gray-300 px-2 py-1 text-xs font-normal text-gray-700 focus:border-blue-500 focus:outline-none"
+                      />
+                    )}
                   </th>
                 )
               })}
@@ -190,15 +215,16 @@ export default function UsersTable() {
             </tr>
           ))}
 
-          {/* When the search filters out every row, show a friendly message instead
-              of an empty table. `colSpan` makes the cell span all columns. */}
+          {/* When the filters (global search OR any column filter) hide every row,
+              show a friendly message instead of an empty table. `colSpan` spans
+              the cell across all columns. */}
           {table.getRowModel().rows.length === 0 && (
             <tr>
               <td
                 colSpan={columns.length}
                 className="px-4 py-6 text-center text-gray-400"
               >
-                No users match “{globalFilter}”.
+                No users match your filters.
               </td>
             </tr>
           )}

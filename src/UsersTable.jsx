@@ -226,15 +226,9 @@ export default function UsersTable() {
           </select>
         </label>
 
-        {/* "Page X of Y" — getPageCount() is the total number of pages. */}
-        <span className="text-gray-600">
-          Page {table.getState().pagination.pageIndex + 1} of{' '}
-          {table.getPageCount()}
-        </span>
-
-        {/* First / Previous / Next / Last. All four disable themselves at the
-            boundaries via getCanPreviousPage() / getCanNextPage(). */}
-        <div className="flex gap-2">
+        {/* First | "Page X of Y" | Last — the First/Last jump buttons flank the
+            page indicator. Both disable at the boundaries. */}
+        <div className="flex items-center gap-3">
           {/* setPageIndex(0) jumps straight to the first page. */}
           <button
             onClick={() => table.setPageIndex(0)}
@@ -243,6 +237,26 @@ export default function UsersTable() {
           >
             First
           </button>
+
+          {/* "Page X of Y" — getPageCount() is the total number of pages. */}
+          <span className="text-gray-600">
+            Page {table.getState().pagination.pageIndex + 1} of{' '}
+            {table.getPageCount()}
+          </span>
+
+          {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
+          <button
+            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+            disabled={!table.getCanNextPage()}
+            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Last
+          </button>
+        </div>
+
+        {/* Previous / Next step one page at a time; they disable at the boundaries
+            via getCanPreviousPage() / getCanNextPage(). */}
+        <div className="flex gap-2">
           <button
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
@@ -256,14 +270,6 @@ export default function UsersTable() {
             className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next
-          </button>
-          {/* Last page index is pageCount - 1 (pageIndex is 0-based). */}
-          <button
-            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-            disabled={!table.getCanNextPage()}
-            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Last
           </button>
         </div>
       </div>

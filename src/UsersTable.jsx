@@ -3,6 +3,7 @@ import {
   useReactTable,
   getCoreRowModel, // builds the basic rows from your data
   getSortedRowModel, // adds client-side sorting on top of the core rows
+  getFilteredRowModel, // adds client-side filtering (used by the global search box)
   flexRender, // renders a column's header/cell, whether it's a string or a JSX function
   createColumnHelper, // small helper that gives column definitions type-safety + autocomplete
 } from '@tanstack/react-table'
@@ -67,6 +68,10 @@ export default function UsersTable() {
   // We own this state so the table stays a "controlled" component.
   const [sorting, setSorting] = useState([])
 
+  // `globalFilter` is the text typed into the search box. TanStack Table matches it
+  // against EVERY column at once (case-insensitive "contains") to decide which rows show.
+  const [globalFilter, setGlobalFilter] = useState('')
+
   // Fetch the real users once when the component first mounts.
   useEffect(() => {
     // An AbortController lets us cancel the request if the component unmounts mid-flight.
@@ -112,10 +117,12 @@ export default function UsersTable() {
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { sorting }, // tell the table our current sort state
-    onSortingChange: setSorting, // let the table update that state when a header is clicked
+    state: { sorting, globalFilter }, // tell the table our current sort + search state
+    onSortingChange: setSorting, // let the table update sort state when a header is clicked
+    onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(), // enables click-to-sort
+    getFilteredRowModel: getFilteredRowModel(), // enables the global search filter
   })
 
   // --- Render states ---------------------------------------------------------
@@ -123,8 +130,19 @@ export default function UsersTable() {
   if (error) return <p className="p-6 text-red-600">Error: {error}</p>
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-      <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+    <div>
+      {/* Global search box: its value is the `globalFilter` state. On every keystroke
+          we push the text into the table, which re-filters all columns instantly. */}
+      <input
+        type="text"
+        value={globalFilter}
+        onChange={(e) => setGlobalFilter(e.target.value)}
+        placeholder="Search all columns…"
+        className="mb-3 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      />
+
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
         <thead className="bg-gray-50">
           {/* A table can have multiple header rows; here there's just one. */}
           {table.getHeaderGroups().map((headerGroup) => (
@@ -166,8 +184,22 @@ export default function UsersTable() {
               ))}
             </tr>
           ))}
+
+          {/* When the search filters out every row, show a friendly message instead
+              of an empty table. `colSpan` makes the cell span all columns. */}
+          {table.getRowModel().rows.length === 0 && (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="px-4 py-6 text-center text-gray-400"
+              >
+                No users match “{globalFilter}”.
+              </td>
+            </tr>
+          )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   )
 }

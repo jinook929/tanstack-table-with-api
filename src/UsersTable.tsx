@@ -16,6 +16,7 @@ import {
   type SortingState, // type of the sorting state we hold in React
   type ColumnFiltersState, // type of the per-column filter state we hold in React
   type RowSelectionState, // type of the row-selection state (a map of selected row ids)
+  type VisibilityState, // type of the column-visibility state (a map of hidden columns)
   type RowData, // generic constraint used by the meta augmentation below
 } from '@tanstack/react-table'
 
@@ -95,6 +96,7 @@ const columns = [
   // or filterable; it just renders checkboxes.
   columnHelper.display({
     id: 'select',
+    enableHiding: false, // always keep the selection column visible (hide it from the Columns menu)
     // Header checkbox toggles ALL rows (across every page). It shows the dash
     // when only some rows are selected.
     header: ({ table }) => (
@@ -190,6 +192,13 @@ export default function UsersTable() {
   // It persists across pages and filters (selection is tracked by row id).
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
+  // `columnVisibility` maps a column id to false when it's HIDDEN, e.g. { email: false }.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  // Whether the "Columns" dropdown is open, plus a ref so we can close it on
+  // an outside click.
+  const [columnsOpen, setColumnsOpen] = useState(false)
+  const columnsMenuRef = useRef<HTMLDivElement>(null)
+
   // Fetch the real users once when the component first mounts.
   useEffect(() => {
     // An AbortController lets us cancel the request if the component unmounts mid-flight.
@@ -228,6 +237,28 @@ export default function UsersTable() {
     return () => controller.abort() // cleanup on unmount
   }, [])
 
+  // Close the "Columns" dropdown when you click outside it or press Escape.
+  useEffect(() => {
+    if (!columnsOpen) return
+    function onPointerDown(e: MouseEvent) {
+      if (
+        columnsMenuRef.current &&
+        !columnsMenuRef.current.contains(e.target as Node)
+      ) {
+        setColumnsOpen(false)
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setColumnsOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [columnsOpen])
+
   // `useMemo` keeps the same array reference between renders so the table doesn't
   // rebuild needlessly. (columns is defined at module scope, so it's already stable.)
   const tableData = useMemo(() => data, [data])
@@ -237,11 +268,12 @@ export default function UsersTable() {
   const table = useReactTable({
     data: tableData,
     columns,
-    state: { sorting, globalFilter, columnFilters, rowSelection }, // sort + search + filters + selection
+    state: { sorting, globalFilter, columnFilters, rowSelection, columnVisibility }, // sort + search + filters + selection + visibility
     onSortingChange: setSorting, // let the table update sort state when a header is clicked
     onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
     onColumnFiltersChange: setColumnFilters, // let the table update per-column filter state
     onRowSelectionChange: setRowSelection, // let the table update which rows are selected
+    onColumnVisibilityChange: setColumnVisibility, // let the table update which columns are visible
     enableRowSelection: true, // turn on checkbox row selection
     // The table manages pagination state internally; we just seed the starting page size.
     initialState: { pagination: { pageSize: 10 } },
@@ -302,12 +334,57 @@ export default function UsersTable() {
         </div>
       </div>
 
-      {/* Selection readout — how many rows are checked right now. */}
+      {/* Controls row above the table: selection readout + Columns dropdown. */}
       {!loading && !error && (
-        <p className="mb-3 font-mono text-xs uppercase tracking-[0.14em] text-muted">
-          <span className="text-signal">{selectedCount}</span>{' '}
-          {selectedCount === 1 ? 'row' : 'rows'} selected
-        </p>
+        <div className="mb-3 flex items-center justify-between">
+          {/* Selection readout — how many rows are checked right now. */}
+          <p className="font-mono text-xs uppercase tracking-[0.14em] text-muted">
+            <span className="text-signal">{selectedCount}</span>{' '}
+            {selectedCount === 1 ? 'row' : 'rows'} selected
+          </p>
+
+          {/* Columns dropdown: a button that toggles a popover of checkboxes,
+              one per hideable column. `ref` lets the outside-click effect above
+              know whether a click landed inside the menu. */}
+          <div className="relative" ref={columnsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setColumnsOpen((open) => !open)}
+              aria-expanded={columnsOpen}
+              className="flex cursor-pointer items-center gap-1.5 rounded-[4px] border border-line bg-white px-3 py-1.5 font-mono text-xs uppercase tracking-[0.14em] text-muted hover:text-ink"
+            >
+              Columns
+              <span className="text-[8px]">▾</span>
+            </button>
+
+            {columnsOpen && (
+              <div className="absolute right-0 z-10 mt-2 w-44 rounded-[4px] border border-line bg-white p-1.5 shadow-lg">
+                {/* getAllLeafColumns() lists every column; getCanHide() is false for
+                    the selection column (enableHiding: false), so it's skipped. */}
+                {table
+                  .getAllLeafColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => (
+                    <label
+                      key={column.id}
+                      className="flex cursor-pointer items-center gap-2 rounded-[3px] px-2 py-1.5 hover:bg-paper"
+                    >
+                      {/* checked = visible; the handler flips this column's visibility. */}
+                      <input
+                        type="checkbox"
+                        checked={column.getIsVisible()}
+                        onChange={column.getToggleVisibilityHandler()}
+                        className="h-4 w-4 cursor-pointer accent-signal"
+                      />
+                      <span className="text-sm text-ink">
+                        {column.columnDef.header as string}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* --- Table area: loading / error / the ledger --- */}
@@ -457,7 +534,7 @@ export default function UsersTable() {
                 {table.getRowModel().rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={columns.length}
+                      colSpan={table.getVisibleLeafColumns().length}
                       className="px-4 py-8 text-center font-mono text-sm text-muted"
                     >
                       No users match your filters.

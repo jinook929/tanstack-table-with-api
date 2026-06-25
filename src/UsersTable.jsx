@@ -4,15 +4,17 @@ import {
   getCoreRowModel, // builds the basic rows from your data
   getSortedRowModel, // adds client-side sorting on top of the core rows
   getFilteredRowModel, // adds client-side filtering (used by the global search box)
+  getPaginationRowModel, // slices the rows into pages (used by the pagination controls)
   flexRender, // renders a column's header/cell, whether it's a string or a JSX function
   createColumnHelper, // small helper that gives column definitions type-safety + autocomplete
 } from '@tanstack/react-table'
 
 // The free API we pull real users from.
 // DummyJSON returns real-looking users with id, firstName, lastName, email and age.
-// We only ask for the fields we need (`select`) and just the first 10 rows (`limit`).
+// We only ask for the fields we need (`select`) and the first 50 rows (`limit`) so the
+// pagination controls below have several pages to actually flip through.
 const API_URL =
-  'https://dummyjson.com/users?limit=10&select=firstName,lastName,email,age'
+  'https://dummyjson.com/users?limit=50&select=firstName,lastName,email,age'
 
 // `createColumnHelper` is keyed to the shape of ONE row in our table.
 // Our row shape (after we massage the API response) is: { id, name, email, age, status }.
@@ -59,7 +61,7 @@ const columns = [
 ]
 
 export default function UsersTable() {
-  // `data` holds our 10 users, `loading`/`error` track the fetch lifecycle.
+  // `data` holds the users fetched from the API; `loading`/`error` track the fetch lifecycle.
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -120,9 +122,12 @@ export default function UsersTable() {
     state: { sorting, globalFilter }, // tell the table our current sort + search state
     onSortingChange: setSorting, // let the table update sort state when a header is clicked
     onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
+    // The table manages pagination state internally; we just seed the starting page size.
+    initialState: { pagination: { pageSize: 10 } },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(), // enables click-to-sort
     getFilteredRowModel: getFilteredRowModel(), // enables the global search filter
+    getPaginationRowModel: getPaginationRowModel(), // enables pagination (page size set above / via the selector)
   })
 
   // --- Render states ---------------------------------------------------------
@@ -199,6 +204,52 @@ export default function UsersTable() {
           )}
         </tbody>
         </table>
+      </div>
+
+      {/* --- Pagination controls -------------------------------------------
+          `table.getState().pagination` holds { pageIndex, pageSize }.
+          pageIndex is 0-based, so we add 1 when showing it to humans. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+        {/* Page size selector: changing it calls setPageSize, which re-slices the rows. */}
+        <label className="flex items-center gap-2 text-gray-600">
+          Rows per page:
+          <select
+            value={table.getState().pagination.pageSize}
+            onChange={(e) => table.setPageSize(Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1"
+          >
+            {[5, 10, 20].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* "Page X of Y" — getPageCount() is the total number of pages. */}
+        <span className="text-gray-600">
+          Page {table.getState().pagination.pageIndex + 1} of{' '}
+          {table.getPageCount()}
+        </span>
+
+        {/* Previous / Next step one page at a time; they disable at the boundaries
+            via getCanPreviousPage() / getCanNextPage(). */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   )

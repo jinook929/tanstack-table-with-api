@@ -29,9 +29,9 @@ const columns = [
   columnHelper.accessor('id', {
     header: 'ID',
     // Numeric columns default to the `inNumberRange` filter (expects a [min, max]
-    // tuple), so our single text box wouldn't filter. Force the string filter so
-    // typing "3" matches any ID containing "3", just like the text columns.
-    filterFn: 'includesString',
+    // tuple), so our single text box wouldn't filter. equalsString compares the
+    // whole value, so typing "3" matches ONLY ID 3 (exact match, not 13/23/…).
+    filterFn: 'equalsString',
   }),
   columnHelper.accessor('name', {
     header: 'Name',
@@ -41,9 +41,9 @@ const columns = [
   }),
   columnHelper.accessor('age', {
     header: 'Age',
-    // Same reason as ID: use string matching so the text filter works on this
-    // numeric column (e.g. typing "29" matches age 29).
-    filterFn: 'includesString',
+    // Same as ID: exact match on this numeric column, so typing "29" matches
+    // ONLY age 29 (not 129, etc.).
+    filterFn: 'equalsString',
   }),
   columnHelper.accessor('status', {
     header: 'Status',

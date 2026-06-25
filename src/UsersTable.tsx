@@ -7,7 +7,37 @@ import {
   getPaginationRowModel, // slices the rows into pages (used by the pagination controls)
   flexRender, // renders a column's header/cell, whether it's a string or a JSX function
   createColumnHelper, // small helper that gives column definitions type-safety + autocomplete
+  type SortingState, // type of the sorting state we hold in React
+  type ColumnFiltersState, // type of the per-column filter state we hold in React
+  type RowData, // generic constraint used by the meta augmentation below
 } from '@tanstack/react-table'
+
+// Module augmentation: teach TanStack Table about the custom `meta` we attach to
+// columns. Without this, `columnDef.meta.filterVariant` would be a type error.
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    filterVariant?: 'select'
+    filterOptions?: string[]
+  }
+}
+
+// One row in our table — the shape every column reads from.
+type User = {
+  id: number
+  name: string
+  email: string
+  age: number
+  status: 'active' | 'inactive'
+}
+
+// The raw shape DummyJSON returns (only the fields we `select`).
+type ApiUser = {
+  id: number
+  firstName: string
+  lastName: string
+  email: string
+  age: number
+}
 
 // The free API we pull real users from.
 // DummyJSON returns real-looking users with id, firstName, lastName, email and age.
@@ -16,9 +46,9 @@ import {
 const API_URL =
   'https://dummyjson.com/users?limit=50&select=firstName,lastName,email,age'
 
-// `createColumnHelper` is keyed to the shape of ONE row in our table.
-// Our row shape (after we massage the API response) is: { id, name, email, age, status }.
-const columnHelper = createColumnHelper()
+// `createColumnHelper<User>()` is keyed to our row type, so each accessor key is
+// checked against User and each cell's `getValue()` is correctly typed.
+const columnHelper = createColumnHelper<User>()
 
 // --- Column definitions -----------------------------------------------------
 // Each `columnHelper.accessor(field, { ... })` describes one column:
@@ -56,7 +86,7 @@ const columns = [
     filterFn: 'equalsString',
     // Render the status as a colored "pill" instead of plain text.
     cell: (info) => {
-      const status = info.getValue()
+      const status = info.getValue() // typed as 'active' | 'inactive'
       const isActive = status === 'active'
       return (
         <span
@@ -76,13 +106,13 @@ const columns = [
 
 export default function UsersTable() {
   // `data` holds the users fetched from the API; `loading`/`error` track the fetch lifecycle.
-  const [data, setData] = useState([])
+  const [data, setData] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   // `sorting` is TanStack Table's sort state: an array like [{ id: 'name', desc: false }].
   // We own this state so the table stays a "controlled" component.
-  const [sorting, setSorting] = useState([])
+  const [sorting, setSorting] = useState<SortingState>([])
 
   // `globalFilter` is the text typed into the search box. TanStack Table matches it
   // against EVERY column at once (case-insensitive "contains") to decide which rows show.
@@ -91,7 +121,7 @@ export default function UsersTable() {
   // `columnFilters` is the PER-COLUMN search state: an array like
   // [{ id: 'name', value: 'em' }]. Each entry filters only its own column.
   // Column filters and the global filter are combined with AND — a row must pass both.
-  const [columnFilters, setColumnFilters] = useState([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
   // Fetch the real users once when the component first mounts.
   useEffect(() => {
@@ -102,24 +132,26 @@ export default function UsersTable() {
       try {
         const res = await fetch(API_URL, { signal: controller.signal })
         if (!res.ok) throw new Error(`Request failed: ${res.status}`)
-        const json = await res.json()
+        const json = (await res.json()) as { users: ApiUser[] }
 
         // Reshape the API response into the exact row shape our columns expect.
-        const rows = json.users.map((u) => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName}`,
-          email: u.email,
-          age: u.age,
-          // NOTE: no free user API exposes an active/inactive flag, so we DERIVE it
-          // from real data. Here: even IDs are "active", odd IDs are "inactive".
-          // Swap this rule for whatever your real backend provides.
-          status: u.id % 2 === 0 ? 'active' : 'inactive',
-        }))
+        const rows = json.users.map(
+          (u): User => ({
+            id: u.id,
+            name: `${u.firstName} ${u.lastName}`,
+            email: u.email,
+            age: u.age,
+            // NOTE: no free user API exposes an active/inactive flag, so we DERIVE it
+            // from real data. Here: even IDs are "active", odd IDs are "inactive".
+            // Swap this rule for whatever your real backend provides.
+            status: u.id % 2 === 0 ? 'active' : 'inactive',
+          })
+        )
 
         setData(rows)
       } catch (err) {
         // A cancelled request throws AbortError — that's expected, so we ignore it.
-        if (err.name !== 'AbortError') setError(err.message)
+        if (err instanceof Error && err.name !== 'AbortError') setError(err.message)
       } finally {
         setLoading(false)
       }
@@ -203,7 +235,7 @@ export default function UsersTable() {
                     {header.column.getCanFilter() &&
                       (header.column.columnDef.meta?.filterVariant === 'select' ? (
                         <select
-                          value={header.column.getFilterValue() ?? ''}
+                          value={(header.column.getFilterValue() as string) ?? ''}
                           onChange={(e) =>
                             // Empty string clears the filter (TanStack auto-removes it).
                             header.column.setFilterValue(e.target.value)
@@ -212,7 +244,7 @@ export default function UsersTable() {
                         >
                           {/* Empty value = "no filter" = show all rows. */}
                           <option value="">All</option>
-                          {header.column.columnDef.meta.filterOptions.map(
+                          {(header.column.columnDef.meta?.filterOptions ?? []).map(
                             (opt) => (
                               <option key={opt} value={opt}>
                                 {opt}
@@ -223,7 +255,7 @@ export default function UsersTable() {
                       ) : (
                         <input
                           type="text"
-                          value={header.column.getFilterValue() ?? ''}
+                          value={(header.column.getFilterValue() as string) ?? ''}
                           onChange={(e) =>
                             header.column.setFilterValue(e.target.value)
                           }

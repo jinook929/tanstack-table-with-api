@@ -416,8 +416,19 @@ export default function UsersTable() {
                       // Numeric columns are right-aligned (tabular figures).
                       const isNum =
                         header.column.id === 'id' || header.column.id === 'age'
+                      // Preferred column widths (the table is auto-layout, so these
+                      // act as hints): a narrower ID and a wider Name.
+                      const widthClass =
+                        header.column.id === 'id'
+                          ? 'w-20'
+                          : header.column.id === 'name'
+                            ? 'w-56'
+                            : ''
                       return (
-                        <th key={header.id} className="px-4 py-3 align-top">
+                        <th
+                          key={header.id}
+                          className={'px-4 py-3 align-top ' + widthClass}
+                        >
                           {/* Sortable columns get a sort-toggle button; the select
                               column (not sortable) renders its checkbox directly.
                               The click handler lives on THIS button (not the whole

@@ -217,10 +217,11 @@ export default function UsersTable() {
             name: `${u.firstName} ${u.lastName}`,
             email: u.email,
             age: u.age,
-            // NOTE: no free user API exposes an active/inactive flag, so we DERIVE it
-            // from real data. Here: even IDs are "active", odd IDs are "inactive".
-            // Swap this rule for whatever your real backend provides.
-            status: u.id % 2 === 0 ? 'active' : 'inactive',
+            // NOTE: DummyJSON has no active/inactive flag, so we ASSIGN one at
+            // random (~50/50) here. This runs once when the data loads, so each
+            // user keeps a stable status for the session. Swap this for your
+            // backend's real value.
+            status: Math.random() < 0.5 ? 'active' : 'inactive',
           })
         )
 
@@ -269,7 +270,12 @@ export default function UsersTable() {
     data: tableData,
     columns,
     state: { sorting, globalFilter, columnFilters, rowSelection, columnVisibility }, // sort + search + filters + selection + visibility
-    onSortingChange: setSorting, // let the table update sort state when a header is clicked
+    onSortingChange: (updater) => {
+      setSorting(updater) // apply the new sort
+      // Sorting reorders the rows (so the page now shows a different set), which
+      // would leave a confusing selection — clear all selected rows on every sort.
+      setRowSelection({})
+    },
     onGlobalFilterChange: setGlobalFilter, // let the table update search state as we type
     onColumnFiltersChange: setColumnFilters, // let the table update per-column filter state
     onRowSelectionChange: setRowSelection, // let the table update which rows are selected
@@ -434,10 +440,13 @@ export default function UsersTable() {
                                   faint until you hover the header (group-hover). */}
                               <span
                                 className={
-                                  'text-[8px] ' +
+                                  'text-[9px] leading-none ' +
+                                  // Same small size as the carets; the unsorted minus
+                                  // is made legible with full color + bold weight
+                                  // (rather than a larger size).
                                   (sortDir
                                     ? 'text-signal'
-                                    : 'text-muted/40 group-hover:text-muted')
+                                    : 'font-bold text-muted group-hover:text-ink')
                                 }
                               >
                                 {sortDir === 'asc'
